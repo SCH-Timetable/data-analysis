@@ -1,0 +1,6 @@
+# SCH Conflict — Standalone (no backend needed)
+1. pip install -r requirements.txt
+2. python -m uvicorn app:app --port 5000
+3. Open http://localhost:5000/docs -> POST /api/allocations/check
+Example: {"section_id":1,"staff_id":1,"room_id":4,"day_id":3,"time_slot_id":2}
+4. Test engine only: python test_conflict_engine.py

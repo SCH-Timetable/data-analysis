@@ -1,0 +1,149 @@
+openapi: 3.0.3
+info:
+  title: SCH Timetable Conflict API
+  version: 1.0.0
+  description: |
+    Deterministic conflict check for SCH-FR-05 + ranked alternatives (SCH-FR-06).
+    Admin does a what-if dry-run BEFORE saving. Backend must block publish if ok=false.
+    Logic lives in conflict_engine.py -> check_move(). This file is the contract.
+servers:
+  - url: http://localhost:5000
+    description: Local backend
+paths:
+  /api/allocations/check:
+    post:
+      summary: What-if conflict check (never writes)
+      operationId: checkMove
+      tags: [Allocations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckMoveRequest'
+            examples:
+              admin-moves-DB-to-Tuesday:
+                value:
+                  section_id: 1
+                  staff_id: 1
+                  room_id: 4
+                  day_id: 3
+                  time_slot_id: 2
+      responses:
+        '200':
+          description: Conflict result + alternatives
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckMoveResponse'
+              examples:
+                conflict:
+                  value:
+                    ok: false
+                    conflicts:
+                      - conflict_type: STAFF_BUSY
+                        message_en: "Staff Ahmed Hassan already teaches allocation #3 at Tuesday 11:00-13:00."
+                        message_ar: "الدكتور Ahmed Hassan عنده محاضرة تانية في نفس الوقت (Tuesday 11:00-13:00) — رقم الحجز 3."
+                      - conflict_type: AVAILABILITY
+                        message_en: "Staff Ahmed Hassan marked unavailable at Tuesday 11:00-13:00."
+                        message_ar: "الدكتور Ahmed Hassan غير متاح في الوقت ده (Tuesday 11:00-13:00)."
+                    recommendations:
+                      - day_id: 4
+                        day_name: Wednesday
+                        time_slot_id: 3
+                        start_time: "13:00"
+                        end_time: "15:00"
+                        room_id: 4
+                        room_number: B203
+                        score: 25
+                        explanation_en: "Capacity waste 25, different day."
+                        explanation_ar: "فرق السعة 25، يوم مختلف."
+                free:
+                  value:
+                    ok: true
+                    conflicts: []
+                    recommendations: []
+components:
+  schemas:
+    CheckMoveRequest:
+      type: object
+      required: [section_id, staff_id, room_id, day_id, time_slot_id]
+      properties:
+        section_id:
+          type: integer
+          example: 1
+        staff_id:
+          type: integer
+          example: 1
+        room_id:
+          type: integer
+          example: 4
+        day_id:
+          type: integer
+          example: 3
+        time_slot_id:
+          type: integer
+          example: 2
+        exclude_allocation_id:
+          type: integer
+          description: Set when editing existing allocation so it doesn't clash with itself
+        required_equipment_id:
+          type: integer
+          nullable: true
+        room_type_required:
+          type: string
+          enum: [classroom, lab]
+          nullable: true
+        duration_slots:
+          type: integer
+          default: 1
+          description: Consecutive slots needed (lecture=1, lab=2)
+    Conflict:
+      type: object
+      required: [conflict_type, message_en, message_ar]
+      properties:
+        conflict_type:
+          type: string
+          enum: [STAFF_BUSY, ROOM_BUSY, GROUP_CLASH, CAPACITY, ROOM_TYPE_MISMATCH, EQUIPMENT, CLOSURE, AVAILABILITY, HOLIDAY, DURATION_OVERFLOW]
+        message_en:
+          type: string
+        message_ar:
+          type: string
+    Recommendation:
+      type: object
+      properties:
+        day_id:
+          type: integer
+        day_name:
+          type: string
+        time_slot_id:
+          type: integer
+        start_time:
+          type: string
+        end_time:
+          type: string
+        room_id:
+          type: integer
+        room_number:
+          type: string
+        score:
+          type: integer
+        explanation_en:
+          type: string
+        explanation_ar:
+          type: string
+    CheckMoveResponse:
+      type: object
+      required: [ok, conflicts]
+      properties:
+        ok:
+          type: boolean
+          description: false = block save/publish, show conflicts to admin
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Conflict'
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Recommendation'
